@@ -1,0 +1,8 @@
+{
+  "name": "your-plugin-name",
+  "description": "Describe what this plugin does and when an agent should use it.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Your Name or Organization"
+  }
+}

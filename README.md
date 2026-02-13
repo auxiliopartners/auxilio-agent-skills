@@ -1,60 +1,40 @@
 # Agent Skills
 
-An internal catalog of [Agent Skills](https://agentskills.io) for our team. Skills give AI agents specialized capabilities and domain knowledge they can load on demand.
+A curated collection of [Agent Skills](https://agentskills.io) for Claude Code, maintained by [Auxilio Partners](https://github.com/auxiliopartners). Skills give AI agents specialized capabilities and domain knowledge they can load on demand.
 
-## Skill Catalog
+This repository is a **Claude Code plugin marketplace** — browse the available plugins below and install them with a single command.
 
-| Skill | Description | Compatibility |
-|-------|-------------|---------------|
-| check-deposit-reader | Extracts structured data from scanned check deposit PDFs — payer name, address, amount, date, check number, and memo | Claude Code |
+## Available Plugins
 
-## Installing Skills
+| Plugin | Description | Version |
+|--------|-------------|---------|
+| [check-deposit-reader](plugins/check-deposit-reader) | Extract structured data from scanned check deposit PDFs — payer name, address, amount, date, check number, and memo | 1.0.0 |
 
-Each skill is a folder containing a `SKILL.md` file. To install a skill, clone this repo and copy (or symlink) the skill folder into your agent's skills directory.
+## Installation
 
-```bash
-git clone git@github.com:auxiliopartners/agent-skills.git
+Add this marketplace in Claude Code:
+
+```
+/plugin marketplace add auxiliopartners/agent-skills
 ```
 
-### Claude Code
+Then install a plugin:
 
-Copy a skill folder into your project or user-level skills directory:
-
-```bash
-# Project-level (available in one project)
-cp -r skills/my-skill .claude/skills/my-skill
-
-# User-level (available everywhere)
-cp -r skills/my-skill ~/.claude/skills/my-skill
+```
+/plugin install check-deposit-reader@agent-skills
 ```
 
-Or symlink to stay in sync with the repo:
+## What Are Agent Skills?
 
-```bash
-ln -s "$(pwd)/skills/my-skill" ~/.claude/skills/my-skill
-```
-
-### Claude Cowork
-
-In Claude Cowork, add the skill through the project settings or copy the skill folder into the project's `.claude/skills/` directory.
-
-### Gemini CLI
-
-Copy the skill folder into your Gemini CLI skills directory:
-
-```bash
-cp -r skills/my-skill ~/.gemini/skills/my-skill
-```
-
-## Spec Reference
-
-Skills follow the open [Agent Skills specification](https://agentskills.io/specification). Each skill must have:
+Skills follow the open [Agent Skills specification](https://agentskills.io/specification). Each skill consists of:
 
 - A `SKILL.md` file with YAML frontmatter (`name` and `description` required)
 - Optional `scripts/`, `references/`, and `assets/` directories
 
-See the [best practices guide](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) for authoring tips.
+Skills are packaged into **plugins** for distribution through Claude Code marketplaces. Each plugin wraps one or more skills in its `skills/` directory alongside a `.claude-plugin/plugin.json` manifest.
+
+See the [best practices guide](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) for skill authoring tips.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add or update skills via pull request.
+We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add a new plugin or improve an existing one.
