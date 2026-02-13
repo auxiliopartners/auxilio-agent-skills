@@ -6,7 +6,7 @@ An internal catalog of [Agent Skills](https://agentskills.io) for our team. Skil
 
 | Skill | Description | Compatibility |
 |-------|-------------|---------------|
-| *No skills yet — be the first to [contribute one](CONTRIBUTING.md)!* | | |
+| check-deposit-reader | Extracts structured data from scanned check deposit PDFs — payer name, address, amount, date, check number, and memo | Claude Code |
 
 ## Installing Skills
 
