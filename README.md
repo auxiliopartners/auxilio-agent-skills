@@ -15,13 +15,13 @@ This repository is a **Claude Code plugin marketplace** — browse the available
 Add this marketplace in Claude Code:
 
 ```
-/plugin marketplace add auxiliopartners/agent-skills
+/plugin marketplace add auxiliopartners/auxilio-agent-skills
 ```
 
 Then install a plugin:
 
 ```
-/plugin install check-deposit-reader@agent-skills
+/plugin install check-deposit-reader@auxilio-agent-skills
 ```
 
 ## What Are Agent Skills?
