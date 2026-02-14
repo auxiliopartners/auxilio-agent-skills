@@ -1,0 +1,8 @@
+{
+  "name": "planning-center-sermon-series",
+  "description": "Create sermon series in Planning Center Publishing within a channel using browser automation. Handles title, description, and artwork uploads for single or batch series creation.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Auxilio Partners"
+  }
+}
