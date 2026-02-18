@@ -9,6 +9,8 @@ This repository is a **Claude Code plugin marketplace** — browse the available
 | Plugin | Description | Version |
 |--------|-------------|---------|
 | [check-deposit-reader](plugins/check-deposit-reader) | Extract structured data from scanned check deposit PDFs — payer name, address, amount, date, check number, and memo | 1.0.0 |
+| [planning-center-sermon-series](plugins/planning-center-sermon-series) | Create sermon series in Planning Center Publishing with title, description, and artwork uploads | 1.0.0 |
+| [planning-center-sermon-episodes](plugins/planning-center-sermon-episodes) | Create sermon episodes in Planning Center Publishing with audio, artwork, speakers, and Subsplash migration support | 1.0.0 |
 
 ## Installation
 
