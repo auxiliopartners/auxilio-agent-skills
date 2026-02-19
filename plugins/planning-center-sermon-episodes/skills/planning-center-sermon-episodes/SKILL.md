@@ -14,486 +14,168 @@ description: |
   Supports Subsplash JSON export format for migration.
 ---
 
-# Planning Center Episode Creation
+# Planning Center Episode Upload & Update
 
-Create sermon episodes using browser automation (Claude in Chrome) for all UI interactions including file uploads.
+Upload artwork/audio, set date/speaker, and remove live times on existing sermon episodes using browser automation (Claude in Chrome).
 
 ## Prerequisites
 
 - User logged into Planning Center Publishing in Chrome
 - Claude in Chrome extension active
-- Target series must exist within a channel
-- Audio and artwork files accessible locally
-- Speaker names must match or be creatable in People database
+- Episode records already created via `yarn migrate` (they have PCO IDs)
+- CDN URLs for artwork and audio available via `yarn pending-uploads`
 
-## Workflow Overview
+## Getting Episode Data
 
-1. Get browser context → `tabs_context_mcp`
-2. Navigate to target channel → Episodes tab
-3. Click "Add episode"
-4. Fill General tab (title, summary, series, speaker, dates)
-5. Upload episode artwork
-6. Go to Media tab → upload audio file
-7. Screenshot to verify, then proceed to next
+Run `yarn pending-uploads` to get episodes needing work:
 
-## Episode Data Structure
-
-### Standard Format
 ```json
 {
-  "title": "Finding Peace in the Storm",
-  "description": "Matthew 8:23-27",
-  "series": "Faith Over Fear",
-  "speaker": "John Smith",
-  "publishDate": "2024-03-10",
-  "publishTime": "09:00",
-  "artwork": "/path/to/episode-art.jpg",
-  "audioFile": "/path/to/sermon.mp3",
-  "videoUrl": "https://youtube.com/watch?v=..."
+  "type": "episode",
+  "slug": "2006-06-03-philemons-problem-and-ours",
+  "episodeId": "618527",
+  "title": "Philemon's Problem and Ours",
+  "speakerNames": ["Rankin Wilbourne"],
+  "speakerPeopleIds": ["1272319"],
+  "publishDate": "2006-06-03T00:00:00Z",
+  "artworkUrl": "https://cdn.subsplash.com/images/.../image.jpg",
+  "audioUrl": "https://cdn.subsplash.com/audios/.../audio.m4a",
+  "steps": ["artwork_uploaded", "audio_uploaded", "speaker_assigned", "date_set", "live_time_removed"]
 }
 ```
 
-### Subsplash Export Format
+## Critical: File Upload via JavaScript
 
-For Subsplash JSON imports, see [references/subsplash-mapping.md](references/subsplash-mapping.md) for field mapping.
+**Do NOT use `upload_image` with ref** — it doesn't work with CDN URLs. Use JS fetch + DataTransfer:
 
-Key Subsplash → Planning Center mappings:
-- `title` → Episode Title
-- `subtitle` → Speaker Name
-- `additional_label` → Description (scripture reference)
-- `date` → Publish Date
-- `_embedded.media-series.title` → Series
-
-**File Organization for Subsplash Migration**:
-Ensure local files are organized to match metadata. Recommended structure:
-```
-sermons/
-├── 2006-09-10-tender-mercies/
-│   ├── metadata.json
-│   ├── audio.mp3 (or audio.m4a)
-│   └── artwork.jpg
-├── 2006-09-17-next-sermon/
-│   ├── metadata.json
-│   ├── audio.mp3
-│   └── artwork.jpg
+```javascript
+(async () => {
+  const response = await fetch('{url}');
+  const blob = await response.blob();
+  const file = new File([blob], '{filename}', { type: '{mimeType}' });
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const input = document.querySelector('{inputSelector}');
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return `Uploaded (${(blob.size / 1024 / 1024).toFixed(1)} MB)`;
+})()
 ```
 
-## Single Episode Creation
+## Speed Guidelines
 
-### Step 1: Navigate to Channel
+- **Do NOT screenshot after every action.** Only screenshot at milestones (after artwork+audio done, after date+speaker+live-time done).
+- **Do NOT wait between actions** unless a modal or upload progress requires it.
+- **Batch mark-done commands** — run all applicable ones together after verifying a milestone.
+- **Combine date + speaker + live-time removal** in one page visit with a single Save before live-time removal.
 
-```
-Navigate to: https://publishing.planningcenteronline.com/sermons/channels/{channel_id}
-Click "Episodes" tab (if not already there)
-Click "Add episode" button
-```
+## Workflow: Process Each Episode
 
-### Step 2: Fill General Tab
+### 1. Navigate to Episode Edit Page
 
-1. **Title** (required):
-   ```
-   find: "Title input"
-   form_input: "{episode_title}"
-   ```
-
-2. **Summary**:
-   ```
-   find: "Add a summary" or "summary textarea"
-   form_input: "{description}"
-   ```
-
-3. **Series** (dropdown):
-   ```
-   find: "Select a series" combobox
-   left_click → opens dropdown
-   find: "{series_name}" option
-   left_click to select
-   ```
-
-4. **Speaker** (search field):
-   ```
-   find: "Add Episode speaker"
-   form_input: "{speaker_name}"
-   Wait for autocomplete results
-   If found → click to select
-   If not found → see "Speaker Creation" section
-   ```
-
-5. **Publish Date/Time**:
-   ```
-   find: "Episode publish date"
-   form_input: "{date}" (format: March 10, 2024)
-   find: "Hours" / "Minutes" / "AM/PM" inputs
-   form_input for each time component
-   ```
-
-### Step 3: Upload Artwork
-
-1. Click episode image edit:
-   ```
-   find: "Edit episode image"
-   left_click
-   ```
-
-2. In "Choose image" modal:
-   ```
-   find: "browse" link in modal
-   upload_image with ref parameter pointing to file input
-   ```
-
-3. After image appears in preview:
-   ```
-   find: "Add image" button
-   left_click
-   ```
-
-4. Wait for modal to close and thumbnail to update
-
-### Step 4: Upload Audio (Media Tab)
-
-1. Navigate to Media tab:
-   ```
-   find: "Media and resources" tab link
-   left_click
-   ```
-
-2. Scroll to "On-demand settings" → "Audio on-demand library"
-
-3. Upload audio file:
-   ```
-   find: "Choose file" button (type=file) under Audio section
-   upload_image with ref and local audio file path
-   ```
-
-4. **Wait for upload to complete** - this is the slowest step:
-   - Small files (~10MB): 15-30 seconds
-   - Medium files (~30MB): 45-90 seconds
-   - Large files (~60MB+): 90-180 seconds
-   - Watch for progress indicator or "Save" button becoming active
-
-5. Save audio:
-   ```
-   find: "Save" button near audio section
-   left_click
-   ```
-
-### Step 5: Add Video URL (Optional)
-
-In Media tab, under "Video on-demand library":
-```
-find: "Video on-demand library" textarea
-form_input: "{video_url}"
-find: "Save" near video section
-left_click
-```
-
-### Step 6: Verify and Mark Complete
-
-Take screenshot to verify episode was created correctly, then mark completed steps:
-
-```bash
-yarn mark-done --episode {slug} --step artwork_uploaded
-yarn mark-done --episode {slug} --step audio_uploaded
-yarn mark-done --episode {slug} --step speaker_assigned
-yarn mark-done --episode {slug} --step date_set
-```
-
-Only mark steps that were actually completed in this session. Navigate back to Episodes list for next upload.
-
-## Episode Update Workflow (Date Setting & Speaker Assignment)
-
-The PCO API does **not** allow setting publish dates or assigning speakers — these return `422 Forbidden`. Use this browser-based workflow to update existing episodes.
-
-### Getting Pending Episodes
-
-Run the CLI to get episodes that need browser updates:
-
-```bash
-yarn pending-uploads
-```
-
-This returns JSON with episodes and their pending steps:
-
-```json
-[
-  {
-    "type": "episode",
-    "slug": "2006-06-03-philemons-problem-and-ours",
-    "episodeId": "618527",
-    "speakerPeopleIds": ["1272319"],
-    "publishDate": "2006-06-03T00:00:00Z",
-    "steps": ["artwork_uploaded", "audio_uploaded", "speaker_assigned", "date_set"]
-  }
-]
-```
-
-The `steps` array lists what still needs to be done. Process each episode that has `date_set` or `speaker_assigned` in its steps.
-
-### Navigate to Episode Edit Page
-
-For each episode, navigate to:
 ```
 https://publishing.planningcenteronline.com/sermons/episodes/{episodeId}/edit
 ```
 
-The `episodeId` comes from `pending-uploads` output or `progress.json`.
+### 2. Upload Artwork (if `artwork_uploaded` in steps)
 
-### Setting the Publish Date
+Execute these actions in rapid sequence — no screenshots between:
 
-The episode edit page has date/time fields for the publish date. PCO auto-assigns a future date (~8 months out) to new episodes — these must be corrected to the original sermon date.
-
-1. **Parse the date** from `publishDate` (ISO 8601: `2006-06-03T00:00:00Z`):
-   - Extract: year=2006, month=June, day=3
-   - The `T00:00:00Z` portion is ignored — only the date matters
-   - Set time to 10:00 AM (reasonable default for sermon publish time)
-
-2. **Set the date field**:
+1. Click the pencil icon on the episode image to open the inline modal. **Note:** `find: "Edit episode image"` may only hover rather than click — if the modal doesn't open, click directly by coordinate on the pencil icon (bottom-left of the image thumbnail, approximately `[39, 176]`).
+2. `find: "Choose image"` → `left_click` (this creates the file input — it doesn't exist until clicked)
+3. Run JS to inject artwork:
+   ```javascript
+   (async () => {
+     const response = await fetch('{artworkUrl}');
+     const blob = await response.blob();
+     const file = new File([blob], 'artwork.jpg', { type: 'image/jpeg' });
+     const dt = new DataTransfer();
+     dt.items.add(file);
+     const input = document.querySelector('input[type="file"]');
+     input.files = dt.files;
+     input.dispatchEvent(new Event('change', { bubbles: true }));
+     return `Artwork: ${(blob.size / 1024 / 1024).toFixed(1)} MB`;
+   })()
    ```
-   find: "Episode publish date" input
-   Clear existing value first (select all, delete)
-   form_input: "June 3, 2006" (format: Month Day, Year)
+4. Wait ~2s for preview to render, then `find: "Add image"` → `left_click`
+
+### 3. Upload Audio (if `audio_uploaded` in steps)
+
+1. `find: "Media and resources"` tab → `left_click`
+2. `find: "Audio on-demand library"` → `scroll_to`
+3. Run JS to inject audio:
+   ```javascript
+   (async () => {
+     const response = await fetch('{audioUrl}');
+     const blob = await response.blob();
+     const isM4a = '{audioUrl}'.endsWith('.m4a');
+     const file = new File([blob], isM4a ? 'audio.m4a' : 'audio.mp3', { type: isM4a ? 'audio/mp4' : 'audio/mpeg' });
+     const dt = new DataTransfer();
+     dt.items.add(file);
+     const inputs = document.querySelectorAll('input[type="file"]');
+     const audioInput = inputs[inputs.length - 1];
+     audioInput.files = dt.files;
+     audioInput.dispatchEvent(new Event('change', { bubbles: true }));
+     return `Audio: ${(blob.size / 1024 / 1024).toFixed(1)} MB`;
+   })()
    ```
+4. Wait ~3s for upload indicator. Audio auto-saves (no Save button needed).
 
-3. **Set the time fields**:
-   ```
-   find: "Hours" input
-   form_input: "10"
-   find: "Minutes" input
-   form_input: "00"
-   find: "AM/PM" selector
-   Select "AM"
-   ```
-
-4. **Save the form** — click the Save button on the page.
-
-5. **Mark step complete**:
-   ```bash
-   yarn mark-done --episode {slug} --step date_set
-   ```
-
-### Assigning a Speaker
-
-Speaker data is available in `progress.json` as `speakerNames` (display names) and `speakerPeopleIds` (PCO People IDs). The People records already exist — they were created by the CLI.
-
-1. **Find the speaker field**:
-   ```
-   find: "Add Episode speaker" or speaker search field
-   ```
-
-2. **Search for the speaker**:
-   ```
-   form_input: "{speakerName}" (e.g., "Rankin Wilbourne")
-   Wait 1-2 seconds for autocomplete results
-   ```
-
-3. **Select the speaker** from autocomplete results:
-   ```
-   find: matching speaker name in dropdown
-   left_click to select
-   ```
-
-4. **Save the form**.
-
-5. **Mark step complete**:
-   ```bash
-   yarn mark-done --episode {slug} --step speaker_assigned
-   ```
-
-### Mark-Done Commands Reference
-
-After each successful browser operation, call the appropriate mark-done command:
-
+**MILESTONE: Screenshot to confirm artwork thumbnail + audio attached.** Then run:
 ```bash
-# After publish date is set:
-yarn mark-done --episode {slug} --step date_set
-
-# After speaker is assigned:
-yarn mark-done --episode {slug} --step speaker_assigned
-
-# After artwork is uploaded:
-yarn mark-done --episode {slug} --step artwork_uploaded
-
-# After audio is uploaded:
-yarn mark-done --episode {slug} --step audio_uploaded
+yarn mark-done --episode {slug} --step artwork_uploaded && yarn mark-done --episode {slug} --step audio_uploaded
 ```
 
-The `{slug}` is the episode key from progress.json (e.g., `2006-06-03-philemons-problem-and-ours`).
+### 4. Set Date + Speaker + Remove Live Time
 
-### Batch Update Loop (Date + Speaker for Multiple Episodes)
+Navigate back to General tab if on Media tab. Do all three in one pass:
 
-For processing many existing episodes that need date and speaker set:
+**Set publish date** (if `date_set` in steps):
+- Parse `publishDate` (e.g., `2006-06-03T00:00:00Z` → June 3, 2006)
+- `find: "Episode publish date"` → `triple_click` to select → `type: "June 3, 2006"`
+- `find: "Hours"` → `triple_click` → `type: "10"` (form_input doesn't reliably set this field)
+- `find: "Minutes"` → `triple_click` → `type: "00"`
+- Ensure AM/PM is set to "AM"
+
+**Assign speaker** (if `speaker_assigned` in steps):
+- `find: "Add Episode speaker"` → `form_input: "{speakerName}"`
+- Wait ~1s for autocomplete → `find` matching name in dropdown → `left_click`
+
+**The form auto-saves** — no explicit Save button is needed.
+
+**Remove live time** (if `live_time_removed` in steps):
+- **IMPORTANT**: Override confirm dialog first to prevent Chrome extension disconnection:
+  ```javascript
+  window.confirm = () => true;
+  ```
+- `find: "Remove time"` → `left_click`
+- The live time entry disappears automatically.
+
+**MILESTONE: Screenshot to confirm date, speaker, and empty live times.** Then run:
+```bash
+yarn mark-done --episode {slug} --step date_set && yarn mark-done --episode {slug} --step speaker_assigned && yarn mark-done --episode {slug} --step live_time_removed
+```
+
+When all 5 steps are marked done, the episode status automatically promotes to `completed`.
+
+## Batch Processing Loop
 
 ```
 1. Run: yarn pending-uploads
-2. Filter episodes with "date_set" or "speaker_assigned" in steps
-3. For each episode:
-   a. Navigate to edit page: /sermons/episodes/{episodeId}/edit
-   b. If "date_set" in steps:
-      - Set publish date from publishDate field
-      - Set time to 10:00 AM
-      - Save
-      - Run: yarn mark-done --episode {slug} --step date_set
-   c. If "speaker_assigned" in steps:
-      - Search for speaker by name from speakerNames
-      - Select from autocomplete
-      - Save
-      - Run: yarn mark-done --episode {slug} --step speaker_assigned
-   d. Screenshot to verify
-   e. Continue to next episode
+2. For each episode:
+   a. Navigate to /sermons/episodes/{episodeId}/edit
+   b. Upload artwork + audio (steps 2-3), screenshot, mark-done
+   c. Set date + speaker + remove live time (step 4), screenshot, mark-done
+   d. Continue to next episode
 ```
-
-**Tip**: Date and speaker can often be set in the same edit page visit — set both, save once, then run both mark-done commands.
-
-## Speaker Handling
-
-### Lookup Existing Speaker
-
-1. Type speaker name in speaker field
-2. Wait 1-2 seconds for autocomplete
-3. If results appear, click matching name
-
-### Create New Speaker
-
-If speaker not found in autocomplete:
-
-1. Open new tab, navigate to People:
-   ```
-   URL: https://people.planningcenteronline.com/people
-   ```
-
-2. Click "New person" or equivalent
-
-3. Fill required fields:
-   - First name
-   - Last name
-
-4. Save person
-
-5. Return to episode tab and search for speaker again
-
-## Batch Episode Upload
-
-### Pre-Processing Steps (Critical for Large Batches)
-
-Before starting batch upload:
-
-1. **Extract unique series** from all metadata files
-2. **Create all series first** using planning-center-series skill
-3. **Extract unique speakers** and verify they exist in People
-4. **Create missing speakers** before starting episode uploads
-5. **Validate all files exist** - check each audio and artwork file is accessible
-
-### Subsplash Batch Import
-
-```javascript
-// Transform Subsplash JSON to standard format
-function transformSubsplash(data, localFilesPath) {
-  return {
-    title: data.title,
-    description: data.additional_label || "",
-    speaker: data.subtitle,
-    series: data._embedded?.["media-series"]?.title,
-    publishDate: data.date,
-    // Local file paths (files must be downloaded from Subsplash first)
-    artwork: `${localFilesPath}/artwork.jpg`,
-    audioFile: `${localFilesPath}/audio.mp3`
-  };
-}
-```
-
-### Batch Processing Strategy
-
-For 1000 episodes, process in manageable batches:
-
-1. **Batch size**: 20-50 episodes per session
-2. **Session breaks**: Re-verify login every 50 episodes
-3. **Progress tracking**: Log completed episodes to resume if interrupted
-4. **Error handling**: Skip failed episodes, log for retry later
-
-### Batch Processing Loop
-
-```
-For each episode in batch:
-  1. Navigate to channel episodes list
-  2. Click "Add episode"
-  3. Fill metadata (title, summary, series, speaker, date)
-  4. Upload artwork
-  5. Switch to Media tab
-  6. Upload audio file (wait for completion!)
-  7. Screenshot to verify
-  8. Run mark-done for each completed step:
-     yarn mark-done --episode {slug} --step artwork_uploaded
-     yarn mark-done --episode {slug} --step audio_uploaded
-     yarn mark-done --episode {slug} --step speaker_assigned
-     yarn mark-done --episode {slug} --step date_set
-  9. Continue to next episode
-```
-
-## Element Reference Table
-
-### Episode Creation (Add Episode Page)
-
-| Element | Find Query | Tab | Action |
-|---------|------------|-----|--------|
-| Add Episode | "Add episode button" | Episodes list | left_click |
-| Title | "Title input" | General | form_input |
-| Summary | "Add a summary" | General | form_input |
-| Series | "Select a series" | General | click + select |
-| Speaker | "Add Episode speaker" | General | form_input + select |
-| Publish Date | "Episode publish date" | General | form_input |
-| Hours | "Hours" input | General | form_input |
-| Minutes | "Minutes" input | General | form_input |
-| AM/PM | "AM/PM" selector | General | click + select |
-| Episode Image | "Edit episode image" | General | left_click |
-| Browse (image) | "browse" in modal | Image modal | upload_image |
-| Add Image | "Add image" button | Image modal | left_click |
-| Media Tab | "Media and resources" | Nav tabs | left_click |
-| Audio Upload | "Choose file" under Audio | Media | upload_image |
-| Audio Save | "Save" near audio | Media | left_click |
-| Video URL | "Video on-demand" | Media | form_input |
-
-### Episode Edit Page (/episodes/{id}/edit)
-
-| Element | Find Query | Action |
-|---------|------------|--------|
-| Publish Date | "Episode publish date" | Clear + form_input (e.g., "June 3, 2006") |
-| Hours | "Hours" input | form_input (e.g., "10") |
-| Minutes | "Minutes" input | form_input (e.g., "00") |
-| AM/PM | "AM/PM" selector | click + select "AM" |
-| Speaker | "Add Episode speaker" | form_input + autocomplete select |
-| Save | "Save" button | left_click |
 
 ## Error Handling
 
-| Error | Detection | Recovery |
-|-------|-----------|----------|
-| Speaker not found | No autocomplete results | Create person in People, retry |
-| Upload timeout | No progress after 180s | Retry upload up to 3 times |
-| Session expired | Login page appears | Notify user to re-login |
-| Series not found | Dropdown empty/no match | Create series first |
-| File not found | Upload fails immediately | Check file path, skip episode |
-| Duplicate episode | Warning message | Skip or rename with date suffix |
-
-## Time Estimates (File Upload Method)
-
-| Operation | Time |
-|-----------|------|
-| Navigate + create episode | 3-5 seconds |
-| Fill metadata fields | 15-20 seconds |
-| Upload artwork (~1MB) | 10-20 seconds |
-| Upload audio (~30MB) | 60-90 seconds |
-| Upload audio (~60MB) | 90-180 seconds |
-| Verify + navigate back | 5-10 seconds |
-| **Total per episode** | **~2-4 minutes** |
-
-### Batch Time Projections
-
-| Episodes | Estimated Time | Notes |
-|----------|---------------|-------|
-| 10 | 30-45 minutes | Good for testing |
-| 50 | 2-3 hours | One session |
-| 100 | 4-7 hours | Break into 2 sessions |
-| 500 | 20-35 hours | Multiple days |
-| 1000 | 40-70 hours | Plan for 1-2 weeks |
-
-**Optimization tip**: Run uploads during off-peak hours for faster network speeds.
+| Error | Recovery |
+|-------|----------|
+| Speaker not found in autocomplete | Create person in People first, retry |
+| Upload timeout (no progress 180s) | Retry up to 3 times |
+| Session expired (login page) | Notify user to re-login |
+| CDN fetch fails | Check URL, retry |
+| File input not found | Take screenshot, find correct selector |
+| Confirm dialog blocks extension | Run `window.confirm = () => true` before clicking Remove time |
