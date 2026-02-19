@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Curated AI agent skills for Claude Code, Gemini CLI, and compatible agents",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "plugins": [
     {
@@ -23,8 +23,8 @@
     {
       "name": "planning-center-sermon-episodes",
       "source": "./plugins/planning-center-sermon-episodes",
-      "description": "Create sermon episodes in Planning Center Publishing within a series using browser automation",
-      "version": "1.0.0"
+      "description": "Create and update sermon episodes in Planning Center Publishing using browser automation",
+      "version": "1.1.0"
     }
   ]
 }

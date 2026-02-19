@@ -1,12 +1,16 @@
 ---
 name: planning-center-sermon-episodes
 description: |
-  Create sermon episodes in Planning Center Publishing within a series.
+  Create and update sermon episodes in Planning Center Publishing within a series.
   TRIGGERS: "create episode", "add episode", "upload sermon", "upload episode",
   "batch upload sermons", "Planning Center episode", "sermon upload", "audio upload to Planning Center",
-  "Subsplash import", "migrate from Subsplash".
+  "Subsplash import", "migrate from Subsplash", "set episode date", "set publish date",
+  "assign speaker", "update episode", "pending uploads", "finish episodes", "episode date and speaker".
   Use when user wants to create episodes with: title, description, artwork, audio file,
-  video URL, publish date/time, and speaker assignment. Handles speaker lookup/creation in People database.
+  video URL, publish date/time, and speaker assignment. Also handles updating existing episodes
+  to set publish dates and assign speakers via browser automation (required because the PCO API
+  returns 422 Forbidden for date fields and speaker assignment endpoints).
+  Integrates with CLI progress tracking via `yarn pending-uploads` and `yarn mark-done`.
   Supports Subsplash JSON export format for migration.
 ---
 
@@ -183,9 +187,162 @@ find: "Save" near video section
 left_click
 ```
 
-### Step 6: Verify and Continue
+### Step 6: Verify and Mark Complete
 
-Take screenshot to verify episode was created correctly, then navigate back to Episodes list for next upload.
+Take screenshot to verify episode was created correctly, then mark completed steps:
+
+```bash
+yarn mark-done --episode {slug} --step artwork_uploaded
+yarn mark-done --episode {slug} --step audio_uploaded
+yarn mark-done --episode {slug} --step speaker_assigned
+yarn mark-done --episode {slug} --step date_set
+```
+
+Only mark steps that were actually completed in this session. Navigate back to Episodes list for next upload.
+
+## Episode Update Workflow (Date Setting & Speaker Assignment)
+
+The PCO API does **not** allow setting publish dates or assigning speakers — these return `422 Forbidden`. Use this browser-based workflow to update existing episodes.
+
+### Getting Pending Episodes
+
+Run the CLI to get episodes that need browser updates:
+
+```bash
+yarn pending-uploads
+```
+
+This returns JSON with episodes and their pending steps:
+
+```json
+[
+  {
+    "type": "episode",
+    "slug": "2006-06-03-philemons-problem-and-ours",
+    "episodeId": "618527",
+    "speakerPeopleIds": ["1272319"],
+    "publishDate": "2006-06-03T00:00:00Z",
+    "steps": ["artwork_uploaded", "audio_uploaded", "speaker_assigned", "date_set"]
+  }
+]
+```
+
+The `steps` array lists what still needs to be done. Process each episode that has `date_set` or `speaker_assigned` in its steps.
+
+### Navigate to Episode Edit Page
+
+For each episode, navigate to:
+```
+https://publishing.planningcenteronline.com/sermons/episodes/{episodeId}/edit
+```
+
+The `episodeId` comes from `pending-uploads` output or `progress.json`.
+
+### Setting the Publish Date
+
+The episode edit page has date/time fields for the publish date. PCO auto-assigns a future date (~8 months out) to new episodes — these must be corrected to the original sermon date.
+
+1. **Parse the date** from `publishDate` (ISO 8601: `2006-06-03T00:00:00Z`):
+   - Extract: year=2006, month=June, day=3
+   - The `T00:00:00Z` portion is ignored — only the date matters
+   - Set time to 10:00 AM (reasonable default for sermon publish time)
+
+2. **Set the date field**:
+   ```
+   find: "Episode publish date" input
+   Clear existing value first (select all, delete)
+   form_input: "June 3, 2006" (format: Month Day, Year)
+   ```
+
+3. **Set the time fields**:
+   ```
+   find: "Hours" input
+   form_input: "10"
+   find: "Minutes" input
+   form_input: "00"
+   find: "AM/PM" selector
+   Select "AM"
+   ```
+
+4. **Save the form** — click the Save button on the page.
+
+5. **Mark step complete**:
+   ```bash
+   yarn mark-done --episode {slug} --step date_set
+   ```
+
+### Assigning a Speaker
+
+Speaker data is available in `progress.json` as `speakerNames` (display names) and `speakerPeopleIds` (PCO People IDs). The People records already exist — they were created by the CLI.
+
+1. **Find the speaker field**:
+   ```
+   find: "Add Episode speaker" or speaker search field
+   ```
+
+2. **Search for the speaker**:
+   ```
+   form_input: "{speakerName}" (e.g., "Rankin Wilbourne")
+   Wait 1-2 seconds for autocomplete results
+   ```
+
+3. **Select the speaker** from autocomplete results:
+   ```
+   find: matching speaker name in dropdown
+   left_click to select
+   ```
+
+4. **Save the form**.
+
+5. **Mark step complete**:
+   ```bash
+   yarn mark-done --episode {slug} --step speaker_assigned
+   ```
+
+### Mark-Done Commands Reference
+
+After each successful browser operation, call the appropriate mark-done command:
+
+```bash
+# After publish date is set:
+yarn mark-done --episode {slug} --step date_set
+
+# After speaker is assigned:
+yarn mark-done --episode {slug} --step speaker_assigned
+
+# After artwork is uploaded:
+yarn mark-done --episode {slug} --step artwork_uploaded
+
+# After audio is uploaded:
+yarn mark-done --episode {slug} --step audio_uploaded
+```
+
+The `{slug}` is the episode key from progress.json (e.g., `2006-06-03-philemons-problem-and-ours`).
+
+### Batch Update Loop (Date + Speaker for Multiple Episodes)
+
+For processing many existing episodes that need date and speaker set:
+
+```
+1. Run: yarn pending-uploads
+2. Filter episodes with "date_set" or "speaker_assigned" in steps
+3. For each episode:
+   a. Navigate to edit page: /sermons/episodes/{episodeId}/edit
+   b. If "date_set" in steps:
+      - Set publish date from publishDate field
+      - Set time to 10:00 AM
+      - Save
+      - Run: yarn mark-done --episode {slug} --step date_set
+   c. If "speaker_assigned" in steps:
+      - Search for speaker by name from speakerNames
+      - Select from autocomplete
+      - Save
+      - Run: yarn mark-done --episode {slug} --step speaker_assigned
+   d. Screenshot to verify
+   e. Continue to next episode
+```
+
+**Tip**: Date and speaker can often be set in the same edit page visit — set both, save once, then run both mark-done commands.
 
 ## Speaker Handling
 
@@ -264,11 +421,17 @@ For each episode in batch:
   5. Switch to Media tab
   6. Upload audio file (wait for completion!)
   7. Screenshot to verify
-  8. Log success
+  8. Run mark-done for each completed step:
+     yarn mark-done --episode {slug} --step artwork_uploaded
+     yarn mark-done --episode {slug} --step audio_uploaded
+     yarn mark-done --episode {slug} --step speaker_assigned
+     yarn mark-done --episode {slug} --step date_set
   9. Continue to next episode
 ```
 
 ## Element Reference Table
+
+### Episode Creation (Add Episode Page)
 
 | Element | Find Query | Tab | Action |
 |---------|------------|-----|--------|
@@ -278,6 +441,9 @@ For each episode in batch:
 | Series | "Select a series" | General | click + select |
 | Speaker | "Add Episode speaker" | General | form_input + select |
 | Publish Date | "Episode publish date" | General | form_input |
+| Hours | "Hours" input | General | form_input |
+| Minutes | "Minutes" input | General | form_input |
+| AM/PM | "AM/PM" selector | General | click + select |
 | Episode Image | "Edit episode image" | General | left_click |
 | Browse (image) | "browse" in modal | Image modal | upload_image |
 | Add Image | "Add image" button | Image modal | left_click |
@@ -285,6 +451,17 @@ For each episode in batch:
 | Audio Upload | "Choose file" under Audio | Media | upload_image |
 | Audio Save | "Save" near audio | Media | left_click |
 | Video URL | "Video on-demand" | Media | form_input |
+
+### Episode Edit Page (/episodes/{id}/edit)
+
+| Element | Find Query | Action |
+|---------|------------|--------|
+| Publish Date | "Episode publish date" | Clear + form_input (e.g., "June 3, 2006") |
+| Hours | "Hours" input | form_input (e.g., "10") |
+| Minutes | "Minutes" input | form_input (e.g., "00") |
+| AM/PM | "AM/PM" selector | click + select "AM" |
+| Speaker | "Add Episode speaker" | form_input + autocomplete select |
+| Save | "Save" button | left_click |
 
 ## Error Handling
 
