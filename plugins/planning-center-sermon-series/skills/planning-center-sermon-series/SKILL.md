@@ -7,117 +7,117 @@ description: |
   Use when user wants to create one or more series with title, description, and artwork.
 ---
 
-# Planning Center Series Creation
+# Planning Center Series Artwork Upload
 
-Create sermon series using browser automation (Claude in Chrome). API is used for metadata where possible; browser automation handles artwork uploads.
+Upload artwork to existing sermon series using browser automation (Claude in Chrome).
 
 ## Prerequisites
 
 - User logged into Planning Center Publishing in Chrome
 - Claude in Chrome extension active
-- Target channel must exist
+- Series records already created via `yarn migrate` (they have PCO IDs)
+- Artwork CDN URLs available via `yarn pending-uploads`
 
-## Workflow Overview
+## Getting Series Data
 
-1. Get browser context → `tabs_context_mcp`
-2. Navigate to channel's Series tab
-3. Click "Add series"
-4. Fill metadata (title, description)
-5. Upload artwork via image picker
-6. Save and verify
+Run `yarn pending-uploads` to get series needing artwork:
 
-## Single Series Creation
-
-### Step 1: Navigate to Channel
-
-```
-URL pattern: https://publishing.planningcenteronline.com/sermons/channels/{channel_id}
-Click "Series" tab in channel navigation
+```json
+{
+  "type": "series",
+  "title": "Grace & Truth",
+  "planningCenterId": "12345",
+  "artworkUrl": "https://cdn.subsplash.com/images/.../image.jpg",
+  "steps": ["artwork"]
+}
 ```
 
-### Step 2: Create Series
+## File Upload Technique (Critical)
 
-1. Find and click "Add series" button:
-   ```
-   find query: "Add series button"
-   left_click on ref
-   ```
+**Do NOT use `upload_image` with ref** — it does not work with CDN URLs. Instead, use JavaScript to fetch the file from its CDN URL and inject it into the file input via the DataTransfer API.
 
-2. Fill title field:
-   ```
-   find query: "Title input"
-   form_input with value: "{series_title}"
-   ```
+Use `mcp__claude-in-chrome__javascript_tool` to execute this code in the browser tab.
 
-3. Fill description:
-   ```
-   find query: "description textarea"
-   form_input with value: "{series_description}"
-   ```
+## Workflow: Upload Series Artwork
 
-### Step 3: Upload Artwork
+### Step 1: Navigate to Series Edit Page
 
-1. Click series image edit button:
-   ```
-   find query: "Edit series image pencil"
-   left_click on ref
-   ```
-
-2. In "Choose image" modal, click browse or use upload:
-   ```
-   find query: "Choose image"
-   left_click → opens modal
-   find query: "browse" link
-   upload_image with ref and imageId from user's file
-   ```
-
-3. Confirm with "Add image" button
-
-### Step 4: Save
-
-Series auto-saves on field change, but verify by checking for success indicators or taking screenshot.
-
-## Batch Creation
-
-For multiple series from JSON array:
-
-```javascript
-// Expected input format
-[
-  {
-    "title": "Faith Over Fear",
-    "description": "A 4-week series on trusting God...",
-    "artwork": "/path/to/faith-over-fear.jpg"
-  },
-  {
-    "title": "Kingdom Come",
-    "description": "Exploring the Lord's Prayer...",
-    "artwork": "/path/to/kingdom-come.jpg"
-  }
-]
+Navigate to the channel's series list, then find and click into the target series:
+```
+URL: https://publishing.planningcenteronline.com/sermons/channels/{channel_id}
+Click "Series" tab
+Find and click the series by title
 ```
 
-Process each series sequentially:
-1. Create series with metadata
-2. Upload artwork
-3. Screenshot to verify
-4. Continue to next series
-5. Report summary when complete
+### Step 2: Upload Artwork
+
+1. Click the series image edit button:
+   ```
+   find: "Edit series image" or pencil icon on the image
+   left_click
+   ```
+
+2. Wait for the "Choose image" modal to appear.
+
+3. Use JavaScript to fetch the artwork from the CDN URL and inject it into the file input:
+   ```javascript
+   // Execute via javascript_tool in the browser tab
+   (async () => {
+     const url = '{artworkUrl}';  // from pending-uploads output
+     const response = await fetch(url);
+     const blob = await response.blob();
+     const file = new File([blob], 'artwork.jpg', { type: 'image/jpeg' });
+     const dt = new DataTransfer();
+     dt.items.add(file);
+     const input = document.querySelector('input[type="file"]');
+     input.files = dt.files;
+     input.dispatchEvent(new Event('change', { bubbles: true }));
+     return `Uploaded artwork (${(blob.size / 1024 / 1024).toFixed(1)} MB)`;
+   })()
+   ```
+
+4. Wait for the image preview to appear in the modal.
+
+5. Click "Add image" button to confirm:
+   ```
+   find: "Add image" button
+   left_click
+   ```
+
+6. Wait for modal to close and thumbnail to update.
+
+### Step 3: Mark Complete
+
+```bash
+yarn mark-done --series "Series Title" --step artwork
+```
+
+## Batch Processing
+
+```
+1. Run: yarn pending-uploads
+2. Filter items where type === "series"
+3. For each series:
+   a. Navigate to series page
+   b. Upload artwork via JS fetch+DataTransfer
+   c. Run: yarn mark-done --series "{title}" --step artwork
+   d. Screenshot to verify
+   e. Continue to next series
+```
 
 ## Element References
 
 | Element | Find Query | Action |
 |---------|------------|--------|
-| Add Series | "Add series button" | left_click |
-| Title | "Title input" or "Series title" | form_input |
-| Description | "description textarea" | form_input |
-| Image Edit | "Edit series image" | left_click |
-| Browse | "browse" in modal | left_click or upload_image |
-| Add Image | "Add image button" | left_click |
+| Series Tab | "Series" tab | left_click |
+| Series Link | series title text | left_click |
+| Image Edit | "Edit series image" or pencil icon | left_click |
+| File Input | `input[type="file"]` in modal | JS fetch+DataTransfer |
+| Add Image | "Add image" button | left_click |
 
 ## Error Handling
 
 - **Element not found**: Take screenshot, retry with alternate query
-- **Upload timeout**: Retry up to 3 times with 5s delay
+- **CDN fetch fails**: Check URL, retry up to 3 times
 - **Session expired**: Notify user to re-authenticate
 - **Duplicate title**: Warn user, ask whether to skip or rename
