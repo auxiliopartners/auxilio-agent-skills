@@ -32,39 +32,49 @@ Run `yarn pending-uploads` to get series needing artwork:
 }
 ```
 
-## File Upload Technique (Critical)
+## Critical: File Upload via JavaScript
 
-**Do NOT use `upload_image` with ref** — it does not work with CDN URLs. Instead, use JavaScript to fetch the file from its CDN URL and inject it into the file input via the DataTransfer API.
+**Do NOT use `upload_image` with ref** — it doesn't work with CDN URLs. Use JS fetch + DataTransfer:
 
-Use `mcp__claude-in-chrome__javascript_tool` to execute this code in the browser tab.
+```javascript
+(async () => {
+  const response = await fetch('{artworkUrl}');
+  const blob = await response.blob();
+  const file = new File([blob], 'artwork.jpg', { type: 'image/jpeg' });
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const input = document.querySelector('input[type="file"]');
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return `Artwork: ${(blob.size / 1024 / 1024).toFixed(1)} MB`;
+})()
+```
+
+## Speed Guidelines
+
+- **Do NOT screenshot after every action.** Only screenshot after artwork is confirmed on the page.
+- **Do NOT wait between actions** unless a modal or upload progress requires it.
+- **Batch mark-done commands** when processing multiple series.
 
 ## Workflow: Upload Series Artwork
 
 ### Step 1: Navigate to Series Edit Page
 
-Navigate to the channel's series list, then find and click into the target series:
+Navigate directly by PCO ID — no need to search through paginated series list:
 ```
-URL: https://publishing.planningcenteronline.com/sermons/channels/{channel_id}
-Click "Series" tab
-Find and click the series by title
+https://publishing.planningcenteronline.com/sermons/series/{planningCenterId}/edit
 ```
 
 ### Step 2: Upload Artwork
 
-1. Click the series image edit button:
-   ```
-   find: "Edit series image" or pencil icon on the image
-   left_click
-   ```
+Execute these actions in rapid sequence:
 
-2. Wait for the "Choose image" modal to appear.
-
-3. Use JavaScript to fetch the artwork from the CDN URL and inject it into the file input:
+1. Click the pencil icon on the series image (bottom-left of the image thumbnail, approximately `[39, 176]`).
+2. An inline menu appears with "Choose image" and "Remove". Click `find: "Choose image"` → `left_click` (this opens the "Choose image" modal and creates the file input).
+3. Run JS to inject artwork from CDN URL:
    ```javascript
-   // Execute via javascript_tool in the browser tab
    (async () => {
-     const url = '{artworkUrl}';  // from pending-uploads output
-     const response = await fetch(url);
+     const response = await fetch('{artworkUrl}');
      const blob = await response.blob();
      const file = new File([blob], 'artwork.jpg', { type: 'image/jpeg' });
      const dt = new DataTransfer();
@@ -72,52 +82,34 @@ Find and click the series by title
      const input = document.querySelector('input[type="file"]');
      input.files = dt.files;
      input.dispatchEvent(new Event('change', { bubbles: true }));
-     return `Uploaded artwork (${(blob.size / 1024 / 1024).toFixed(1)} MB)`;
+     return `Artwork: ${(blob.size / 1024 / 1024).toFixed(1)} MB`;
    })()
    ```
+4. Wait ~2s for preview to render, then `find: "Add image"` → `left_click`
 
-4. Wait for the image preview to appear in the modal.
-
-5. Click "Add image" button to confirm:
-   ```
-   find: "Add image" button
-   left_click
-   ```
-
-6. Wait for modal to close and thumbnail to update.
-
-### Step 3: Mark Complete
-
+**MILESTONE: Screenshot to confirm artwork thumbnail updated.** Then run:
 ```bash
-yarn mark-done --series "Series Title" --step artwork
+yarn mark-done --series "{title}" --step artwork
 ```
 
-## Batch Processing
+## Batch Processing Loop
 
 ```
 1. Run: yarn pending-uploads
 2. Filter items where type === "series"
 3. For each series:
-   a. Navigate to series page
-   b. Upload artwork via JS fetch+DataTransfer
+   a. Navigate to /sermons/series/{planningCenterId}/edit
+   b. Upload artwork via pencil → Choose image → JS fetch+DataTransfer → Add image
    c. Run: yarn mark-done --series "{title}" --step artwork
-   d. Screenshot to verify
-   e. Continue to next series
+   d. Continue to next series
+4. Screenshot periodically to verify (not after every single series)
 ```
-
-## Element References
-
-| Element | Find Query | Action |
-|---------|------------|--------|
-| Series Tab | "Series" tab | left_click |
-| Series Link | series title text | left_click |
-| Image Edit | "Edit series image" or pencil icon | left_click |
-| File Input | `input[type="file"]` in modal | JS fetch+DataTransfer |
-| Add Image | "Add image" button | left_click |
 
 ## Error Handling
 
-- **Element not found**: Take screenshot, retry with alternate query
-- **CDN fetch fails**: Check URL, retry up to 3 times
-- **Session expired**: Notify user to re-authenticate
-- **Duplicate title**: Warn user, ask whether to skip or rename
+| Error | Recovery |
+|-------|----------|
+| Pencil icon doesn't open menu | Take screenshot, try `find: "Edit series image"` instead |
+| File input not found after "Choose image" | Wait 1s, retry — input is created dynamically |
+| CDN fetch fails | Check URL, retry up to 3 times |
+| Session expired (login page) | Notify user to re-login |
