@@ -18,13 +18,13 @@
       "name": "planning-center-sermon-series",
       "source": "./plugins/planning-center-sermon-series",
       "description": "Create sermon series in Planning Center Publishing within a channel using browser automation",
-      "version": "1.0.0"
+      "version": "2.0.0"
     },
     {
       "name": "planning-center-sermon-episodes",
       "source": "./plugins/planning-center-sermon-episodes",
       "description": "Create and update sermon episodes in Planning Center Publishing using browser automation",
-      "version": "1.1.0"
+      "version": "2.0.0"
     }
   ]
 }
